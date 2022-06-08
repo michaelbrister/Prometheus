@@ -1,0 +1,325 @@
+# my global config
+global:
+  scrape_interval:     15s # By default, scrape targets every 15 seconds.
+  evaluation_interval: 15s # By default, scrape targets every 15 seconds.
+  # scrape_timeout is set to the global default (10s).
+
+  # Attach these labels to any time series or alerts when communicating with
+  # external systems (federation, remote storage, Alertmanager).
+  external_labels:
+      monitor: 'example'
+
+# Load and evaluate rules in this file every 'evaluation_interval' seconds.
+rule_files:
+  - 'rules/prometheus.rules.yml'
+  - 'rules/alert.rules.yml'
+  - 'rules/wmi.rules.yml'
+  - 'rules/windows.rules.yml'
+  - 'rules/rvid.rules.yml'
+  # - 'rules/postgres.rules.yml'
+    #  - 'rules/cadvisor.rules.yml'
+    #  - 'rules/node-exporter.rules.yml'
+
+# alert
+alerting:
+  alertmanagers:
+  - scheme: http
+    static_configs:
+    - targets:
+      - "{{ inventory_hostname }}:9093"
+
+# A scrape configuration containing exactly one endpoint to scrape:
+# Here it's Prometheus itself.
+scrape_configs:
+  # The job name is added as a label `job=<job_name>` to any timeseries scraped from this config.
+  - job_name: 'prometheus'
+
+    # Override the global default and scrape targets from this job every 5 seconds.
+    scrape_interval: 5s
+
+    # metrics_path defaults to '/metrics'
+    # scheme defaults to 'http'.
+
+    static_configs:
+      - targets:
+        - {{ inventory_hostname }}:9090
+        # - cadvisor:8080
+        labels:
+          NotifyTeam: operations 
+
+  - job_name: 'RVID'
+    metrics_path: /static/rvid-service-check.txt
+    # Override the global default and scrape targets from this job every 5 seconds.
+    scrape_interval: 10s
+
+    # metrics_path defaults to '/metrics'
+    # scheme defaults to 'http'.
+
+    #    scheme: https
+    file_sd_configs:
+      - files:
+        - 'targets/rvid.yml'
+    relabel_configs:
+      # Make instance label the target
+      - source_labels: [__param_target]
+        target_label: instance
+          #      # Actually talk to the blackbox exporter though
+          #      - target_label: __address__
+          #        replacement: "{{ inventory_hostname }}:9115"
+
+  - job_name: 'HTTP'
+    metrics_path: /probe
+    file_sd_configs:
+      - files:
+        - 'targets/http_2xx.yml'
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: __param_target
+      - source_labels: [__param_target]
+        target_label: instance
+      - target_label: __address__
+        replacement: "{{ inventory_hostname }}:9115"  # Blackbox exporter.
+
+        #  - job_name: 'ICMP'
+        #    scrape_interval: 30s
+        #    metrics_path: /probe
+        #    params:
+        #      module: [icmp]
+        #    file_sd_configs:
+        #      - files:
+        #        - 'targets/icmp.yml'
+        #    relabel_configs:
+        #      - source_labels: [__address__]
+        #        target_label: __param_target
+        #      - source_labels: [__param_target]
+        #        target_label: instance
+        #      - target_label: __address__
+        #        replacement: "{{ inventory_hostname }}:9115"  # Blackbox exporter.
+
+  - job_name: 'ICMP'
+    scrape_interval: 30s
+    metrics_path: /ping
+    file_sd_configs:
+      - files:
+        - 'targets/icmp.yml'
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: __param_target
+      - source_labels: [__param_target]
+        target_label: instance
+      - target_label: __address__
+        replacement: "{{ inventory_hostname }}:9346"  # ping-exporter.
+
+  - job_name: 'TCP'
+    scrape_interval: 30s
+    metrics_path: /probe
+    params:
+      module: [tcp]
+    static_configs:
+      - targets:
+          - atlas.w1-research.com:1433 
+          - dbprod01.w1-research.com:1433 
+        labels:
+          NotifyTeam: bus
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: __param_target
+      - source_labels: [__param_target]
+        target_label: instance
+      - target_label: __address__
+        replacement: "{{ inventory_hostname }}:9115"  # Blackbox exporter.
+
+  - job_name: 'snmp'
+    static_configs:
+    file_sd_configs:
+      - files:
+        - 'targets/snmp.yml'
+    metrics_path: /snmp
+    params:
+      module: [if_mib]
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: __param_target
+      - source_labels: [__param_target]
+        target_label: instance
+      - target_label: __address__
+        replacement: "{{ inventory_hostname }}:9116"  # The SNMP exporter's real hostname:port.
+      - source_labels: [snmpCommunity] # Take community from targets
+        target_label: __param_community
+      - source_labels: [mib]           # Take module also from targets
+        target_label: __param_module
+
+  - job_name: 'us-east-1'
+    ec2_sd_configs:
+      - region: us-east-1
+        access_key: ACCESS_KEY
+        secret_key: SECRET_ACCESS_KEY
+        port: 9100
+        refresh_interval: 1m
+    relabel_configs:
+      - source_labels: ['__meta_ec2_instance_state']
+        regex: 'running'
+        action: 'keep'
+      - source_labels: ['__meta_ec2_platform']
+        regex: 'windows'
+        action: 'drop'        
+      - source_labels: ['__meta_ec2_tag_Name']
+        target_label: name
+      - source_labels: ['__meta_ec2_tag_NotifyTeam']
+        target_label: NotifyTeam
+
+  - job_name: 'cAdvisor'
+    ec2_sd_configs:
+      - region: us-east-1
+        access_key: ACCESS_KEY
+        secret_key: SECRET_ACCESS_KEY
+        port: 8080
+        refresh_interval: 1m
+    relabel_configs:
+      - source_labels: ['__meta_ec2_instance_state']
+        regex: 'running'
+        action: 'keep'
+      - source_labels: ['__meta_ec2_platform']
+        regex: 'windows'
+        action: 'drop'
+      - source_labels: ['__meta_ec2_tag_Name']
+        target_label: name
+      - source_labels: ['__meta_ec2_tag_NotifyTeam']
+        target_label: NotifyTeam
+
+  - job_name: 'us-east-1-windows'
+    ec2_sd_configs:
+      - region: us-east-1 
+        access_key: ACCESS_KEY
+        secret_key: SECRET_ACCESS_KEY
+        port: 9182
+        refresh_interval: 1m
+    relabel_configs:
+      - source_labels: ['__meta_ec2_instance_state']
+        regex: 'running'
+        action: 'keep'
+      - source_labels: ['__meta_ec2_platform']
+        regex: 'windows'
+        action: 'keep'        
+      - source_labels: ['__meta_ec2_tag_Name']
+        target_label: name
+      - source_labels: ['__meta_ec2_tag_NotifyTeam']
+        target_label: NotifyTeam 
+
+  - job_name: 'eu-west-1-windows'
+    ec2_sd_configs:
+      - region: eu-west-1 
+        access_key: ACCESS_KEY
+        secret_key: SECRET_ACCESS_KEY
+        port: 9182
+        refresh_interval: 1m
+    relabel_configs:
+      - source_labels: ['__meta_ec2_instance_state']
+        regex: 'running'
+        action: 'keep'
+      - source_labels: ['__meta_ec2_platform']
+        regex: 'windows'
+        action: 'keep'        
+      - source_labels: ['__meta_ec2_tag_Name']
+        target_label: name
+      - source_labels: ['__meta_ec2_tag_NotifyTeam']
+        target_label: NotifyTeam 
+      - source_labels: ['__meta_ec2_tag_PrometheusGroup']
+        target_label: group 
+
+  - job_name: 'eu-west-1'
+    ec2_sd_configs:
+      - region: eu-west-1
+        access_key: ACCESS_KEY
+        secret_key: SECRET_ACCESS_KEY
+        port: 9100
+        refresh_interval: 1m
+    relabel_configs:
+      - source_labels: ['__meta_ec2_instance_state']
+        regex: 'running'
+        action: 'keep'
+      - source_labels: ['__meta_ec2_platform']
+        regex: 'windows'
+        action: 'drop'        
+      - source_labels: ['__meta_ec2_tag_Name']
+        target_label: name
+      - source_labels: ['__meta_ec2_tag_NotifyTeam']
+        target_label: NotifyTeam 
+
+  - job_name: 'SERMO-Infastructure'
+    file_sd_configs:
+      - files:
+        - 'targets/sermo-infrastructure.yml'
+    relabel_configs:
+      - source_labels: ['name']
+        target_label: name
+
+  - job_name: telegraf
+    scrape_interval: 5s
+    static_configs:
+      - targets: 
+          - {{ inventory_hostname }}:9273
+    metric_relabel_configs:
+    - source_labels: [instance]
+      regex: '(.*):\d+'
+      target_label: server
+      
+{#   - job_name: 'postgres_exporter'
+    static_configs:
+      - targets: ['{{ inventory_hostname }}:9187'] #}
+
+{#   - job_name: 'solr'
+    file_sd_configs:
+      - files:
+        - 'targets/solr.yml'
+
+  - job_name: 'cAdvisor'
+    static_configs:
+      - targets:
+        - 10.0.21.18:8080
+    relabel_configs:
+      - source_labels: ['__meta_ec2_tag_Name']
+        target_label: name #}
+
+{#   - job_name: 'smtp_status_tls'
+    metrics_path: /probe
+    params:
+      module: [smtp_starttls]
+    static_configs:
+      - targets: [
+        'ldc-mailrelay01.w1-research.com'      
+            ]
+    relabel_configs:
+      # Ensure port is 25, pass as URL parameter
+      - source_labels: [__address__]
+        regex: (.*)(:.*)?
+        replacement: ${1}:587
+        target_label: __param_target
+      # Make instance label the target
+      - source_labels: [__param_target]
+        target_label: instance
+      # Actually talk to the blackbox exporter though
+      - target_label: __address__
+        replacement: "{{ inventory_hostname }}:9115" #}
+
+{#   - job_name: 'smtp_status'
+    metrics_path: /probe
+    params:
+      module: [smtp_banner]
+    static_configs:
+      - targets: [
+                'ldc-mailrelay01.w1-research.com'
+                ]
+    relabel_configs:
+      # Ensure port is 25, pass as URL parameter
+      - source_labels: [__address__]
+        regex: (.*)(:.*)?
+        replacement: ${1}:25
+        target_label: __param_target
+      # Make instance label the target
+      - source_labels: [__param_target]
+        target_label: instance
+      # Actually talk to the blackbox exporter though
+      - target_label: __address__
+        replacement: "{{ inventory_hostname }}:9115"
+ #}
