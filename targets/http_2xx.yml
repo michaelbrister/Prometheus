@@ -1,0 +1,18 @@
+- labels:
+    module: http_2xx
+    group: http_2xx
+    region: "us-east-1"
+    NotifyTeam: operations 
+  targets:
+    - https://gitlab.com
+    - https://github.com
+    - https://google.com
+
+
+- labels:
+    module: http_2xx
+    group: http_2xx
+    region: "us-east-1"
+    NotifyTeam: it 
+  targets:
+    - https://youtube.com
