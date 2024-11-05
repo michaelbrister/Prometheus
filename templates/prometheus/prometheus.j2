@@ -47,26 +47,6 @@ scrape_configs:
         labels:
           NotifyTeam: operations 
 
-  - job_name: 'RVID'
-    metrics_path: /static/rvid-service-check.txt
-    # Override the global default and scrape targets from this job every 5 seconds.
-    scrape_interval: 10s
-
-    # metrics_path defaults to '/metrics'
-    # scheme defaults to 'http'.
-
-    #    scheme: https
-    file_sd_configs:
-      - files:
-        - 'targets/rvid.yml'
-    relabel_configs:
-      # Make instance label the target
-      - source_labels: [__param_target]
-        target_label: instance
-          #      # Actually talk to the blackbox exporter though
-          #      - target_label: __address__
-          #        replacement: "{{ inventory_hostname }}:9115"
-
   - job_name: 'HTTP'
     metrics_path: /probe
     file_sd_configs:
@@ -245,14 +225,6 @@ scrape_configs:
         target_label: name
       - source_labels: ['__meta_ec2_tag_NotifyTeam']
         target_label: NotifyTeam 
-
-  - job_name: 'SERMO-Infastructure'
-    file_sd_configs:
-      - files:
-        - 'targets/sermo-infrastructure.yml'
-    relabel_configs:
-      - source_labels: ['name']
-        target_label: name
 
   - job_name: telegraf
     scrape_interval: 5s
